@@ -1,5 +1,7 @@
 import pygame
 import random
+import math
+import array
 from .fruit import Fruit
 
 WHITE = (255, 255, 255)
@@ -21,6 +23,7 @@ class GameEngine:
 
         self.lives = 3
         self.score = 0
+
         self.font = pygame.font.SysFont("Arial", 28)
         self.game_over_font = pygame.font.SysFont("Arial", 60)
         self.final_score_font = pygame.font.SysFont("Arial", 36)
@@ -29,16 +32,98 @@ class GameEngine:
         self.game_over = False
         self.exit_requested = False
         self.difficulty = "Medium"
+        self.game_over_sound_played = False
+
+        self.slice_sound = None
+        self.bomb_sound = None
+        self.game_over_sound = None
+        self.bomb_channel = None
+        self.game_over_channel = None
+
+        self.setup_sounds()
+
+    def setup_sounds(self):
+        try:
+            pygame.mixer.init(frequency=44100, size=-16, channels=1)
+
+            self.slice_sound = self.make_tone(900, 0.07, 0.35)
+            self.bomb_sound = self.make_tone(100, 0.30, 0.65)
+
+            self.game_over_sound = self.make_sequence([
+                (500, 0.18),
+                (350, 0.18),
+                (200, 0.35)
+            ], 0.5)
+
+            self.bomb_channel = pygame.mixer.Channel(1)
+            self.game_over_channel = pygame.mixer.Channel(2)
+
+        except pygame.error:
+            self.slice_sound = None
+            self.bomb_sound = None
+            self.game_over_sound = None
+
+    def make_tone(self, frequency, duration, volume):
+        sample_rate = 44100
+        sample_count = int(sample_rate * duration)
+
+        buffer = array.array("h")
+
+        for i in range(sample_count):
+            value = math.sin(
+                2 * math.pi * frequency * i / sample_rate
+            )
+
+            sample = int(
+                32767 * volume * value
+            )
+
+            buffer.append(sample)
+
+        return pygame.mixer.Sound(buffer=buffer)
+
+    def make_sequence(self, notes, volume):
+        sample_rate = 44100
+        buffer = array.array("h")
+
+        for frequency, duration in notes:
+            sample_count = int(sample_rate * duration)
+
+            for i in range(sample_count):
+                value = math.sin(
+                    2 * math.pi * frequency * i / sample_rate
+                )
+
+                sample = int(
+                    32767 * volume * value
+                )
+
+                buffer.append(sample)
+
+        return pygame.mixer.Sound(buffer=buffer)
 
     def spawn_fruit(self):
         x = random.randint(60, self.width - 60)
         vy = -random.uniform(13, 16) * self.speed_scale
         vx = random.uniform(-2, 2)
         gravity = 0.35
+
         kind = "bomb" if random.random() < self.bomb_chance else "fruit"
 
-        fruit = Fruit(x, self.height + 30, vx, vy, gravity, kind=kind)
-        fruit.color = BOMB_BLACK if kind == "bomb" else random.choice(FRUIT_COLORS)
+        fruit = Fruit(
+            x,
+            self.height + 30,
+            vx,
+            vy,
+            gravity,
+            kind=kind
+        )
+
+        fruit.color = (
+            BOMB_BLACK
+            if kind == "bomb"
+            else random.choice(FRUIT_COLORS)
+        )
 
         self.fruits.append(fruit)
 
@@ -47,12 +132,16 @@ class GameEngine:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_1:
                     self.start_new_game("Easy")
+
                 elif event.key == pygame.K_2:
                     self.start_new_game("Medium")
+
                 elif event.key == pygame.K_3:
                     self.start_new_game("Hard")
+
                 elif event.key == pygame.K_4:
                     self.exit_requested = True
+
             return
 
         if event.type == pygame.MOUSEMOTION:
@@ -60,12 +149,16 @@ class GameEngine:
 
     def start_new_game(self, difficulty):
         self.difficulty = difficulty
+
         self.fruits = []
         self.trail = []
         self._spawn_timer = 0
+
         self.lives = 3
         self.score = 0
+
         self.game_over = False
+        self.game_over_sound_played = False
 
         if difficulty == "Easy":
             self.spawn_interval = 70
@@ -94,7 +187,11 @@ class GameEngine:
 
         length_squared = dx * dx + dy * dy
 
-        t = ((fruit.x - x1) * dx + (fruit.y - y1) * dy) / length_squared
+        t = (
+            (fruit.x - x1) * dx +
+            (fruit.y - y1) * dy
+        ) / length_squared
+
         t = max(0, min(1, t))
 
         closest_x = x1 + t * dx
@@ -111,7 +208,14 @@ class GameEngine:
         previous_pos = self.trail[-1] if self.trail else pos
 
         for fruit in self.fruits:
-            if not fruit.sliced and self._segment_hits_circle(previous_pos, pos, fruit):
+            if (
+                not fruit.sliced
+                and self._segment_hits_circle(
+                    previous_pos,
+                    pos,
+                    fruit
+                )
+            ):
                 self._slice(fruit)
 
         self.trail.append(pos)
@@ -123,9 +227,33 @@ class GameEngine:
         fruit.sliced = True
 
         if fruit.kind == "bomb":
+            if self.bomb_sound and self.bomb_channel:
+                self.bomb_channel.play(self.bomb_sound)
+
+                if self.game_over_sound:
+                    self.bomb_channel.queue(
+                        self.game_over_sound
+                    )
+
+            self.game_over_sound_played = True
             self.game_over = True
+
         else:
+            if self.slice_sound:
+                self.slice_sound.play()
+
             self.score += 1
+
+    def trigger_game_over(self):
+        self.game_over = True
+
+        if not self.game_over_sound_played:
+            if self.game_over_sound and self.game_over_channel:
+                self.game_over_channel.play(
+                    self.game_over_sound
+                )
+
+            self.game_over_sound_played = True
 
     def handle_input(self):
         pass
@@ -151,6 +279,7 @@ class GameEngine:
             if fruit.off_screen(self.height):
                 if fruit.kind == "fruit":
                     self.lives -= 1
+
                 continue
 
             still_alive.append(fruit)
@@ -158,11 +287,15 @@ class GameEngine:
         self.fruits = still_alive
 
         if self.lives <= 0:
-            self.game_over = True
+            self.trigger_game_over()
 
     def render(self, screen):
         for fruit in self.fruits:
-            color = getattr(fruit, "color", WHITE)
+            color = getattr(
+                fruit,
+                "color",
+                WHITE
+            )
 
             pygame.draw.circle(
                 screen,
@@ -172,37 +305,62 @@ class GameEngine:
             )
 
         if len(self.trail) >= 2 and not self.game_over:
-            pygame.draw.lines(screen, WHITE, False, self.trail, 3)
+            pygame.draw.lines(
+                screen,
+                WHITE,
+                False,
+                self.trail,
+                3
+            )
 
         score_text = self.font.render(
             f"Score: {self.score}",
             True,
             WHITE
         )
-        screen.blit(score_text, (10, 10))
+
+        screen.blit(
+            score_text,
+            (10, 10)
+        )
 
         lives_text = self.font.render(
             f"Lives: {self.lives}",
             True,
             WHITE
         )
-        screen.blit(lives_text, (self.width - 130, 10))
+
+        screen.blit(
+            lives_text,
+            (self.width - 130, 10)
+        )
 
         difficulty_text = self.font.render(
             f"Difficulty: {self.difficulty}",
             True,
             WHITE
         )
-        screen.blit(difficulty_text, (10, 45))
+
+        screen.blit(
+            difficulty_text,
+            (10, 45)
+        )
 
         if self.game_over:
             self.render_game_over(screen)
 
     def render_game_over(self, screen):
-        overlay = pygame.Surface((self.width, self.height))
+        overlay = pygame.Surface(
+            (self.width, self.height)
+        )
+
         overlay.set_alpha(180)
         overlay.fill((0, 0, 0))
-        screen.blit(overlay, (0, 0))
+
+        screen.blit(
+            overlay,
+            (0, 0)
+        )
 
         game_over_text = self.game_over_font.render(
             "GAME OVER",
@@ -216,10 +374,29 @@ class GameEngine:
             WHITE
         )
 
-        option1 = self.menu_font.render("1 - Easy", True, WHITE)
-        option2 = self.menu_font.render("2 - Medium", True, WHITE)
-        option3 = self.menu_font.render("3 - Hard", True, WHITE)
-        option4 = self.menu_font.render("4 - Exit", True, WHITE)
+        option1 = self.menu_font.render(
+            "1 - Easy",
+            True,
+            WHITE
+        )
+
+        option2 = self.menu_font.render(
+            "2 - Medium",
+            True,
+            WHITE
+        )
+
+        option3 = self.menu_font.render(
+            "3 - Hard",
+            True,
+            WHITE
+        )
+
+        option4 = self.menu_font.render(
+            "4 - Exit",
+            True,
+            WHITE
+        )
 
         game_over_rect = game_over_text.get_rect(
             center=(self.width // 2, 180)
@@ -245,9 +422,32 @@ class GameEngine:
             center=(self.width // 2, 465)
         )
 
-        screen.blit(game_over_text, game_over_rect)
-        screen.blit(score_text, score_rect)
-        screen.blit(option1, option1_rect)
-        screen.blit(option2, option2_rect)
-        screen.blit(option3, option3_rect)
-        screen.blit(option4, option4_rect)
+        screen.blit(
+            game_over_text,
+            game_over_rect
+        )
+
+        screen.blit(
+            score_text,
+            score_rect
+        )
+
+        screen.blit(
+            option1,
+            option1_rect
+        )
+
+        screen.blit(
+            option2,
+            option2_rect
+        )
+
+        screen.blit(
+            option3,
+            option3_rect
+        )
+
+        screen.blit(
+            option4,
+            option4_rect
+        )
