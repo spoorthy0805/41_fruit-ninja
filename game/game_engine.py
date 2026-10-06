@@ -24,8 +24,11 @@ class GameEngine:
         self.font = pygame.font.SysFont("Arial", 28)
         self.game_over_font = pygame.font.SysFont("Arial", 60)
         self.final_score_font = pygame.font.SysFont("Arial", 36)
+        self.menu_font = pygame.font.SysFont("Arial", 30)
 
         self.game_over = False
+        self.exit_requested = False
+        self.difficulty = "Medium"
 
     def spawn_fruit(self):
         x = random.randint(60, self.width - 60)
@@ -41,10 +44,43 @@ class GameEngine:
 
     def handle_event(self, event):
         if self.game_over:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:
+                    self.start_new_game("Easy")
+                elif event.key == pygame.K_2:
+                    self.start_new_game("Medium")
+                elif event.key == pygame.K_3:
+                    self.start_new_game("Hard")
+                elif event.key == pygame.K_4:
+                    self.exit_requested = True
             return
 
         if event.type == pygame.MOUSEMOTION:
             self._handle_motion(event.pos)
+
+    def start_new_game(self, difficulty):
+        self.difficulty = difficulty
+        self.fruits = []
+        self.trail = []
+        self._spawn_timer = 0
+        self.lives = 3
+        self.score = 0
+        self.game_over = False
+
+        if difficulty == "Easy":
+            self.spawn_interval = 70
+            self.bomb_chance = 0.08
+            self.speed_scale = 0.9
+
+        elif difficulty == "Medium":
+            self.spawn_interval = 55
+            self.bomb_chance = 0.15
+            self.speed_scale = 1.0
+
+        elif difficulty == "Hard":
+            self.spawn_interval = 40
+            self.bomb_chance = 0.25
+            self.speed_scale = 1.2
 
     def _segment_hits_circle(self, start, end, fruit):
         x1, y1 = start
@@ -152,6 +188,13 @@ class GameEngine:
         )
         screen.blit(lives_text, (self.width - 130, 10))
 
+        difficulty_text = self.font.render(
+            f"Difficulty: {self.difficulty}",
+            True,
+            WHITE
+        )
+        screen.blit(difficulty_text, (10, 45))
+
         if self.game_over:
             self.render_game_over(screen)
 
@@ -173,13 +216,38 @@ class GameEngine:
             WHITE
         )
 
+        option1 = self.menu_font.render("1 - Easy", True, WHITE)
+        option2 = self.menu_font.render("2 - Medium", True, WHITE)
+        option3 = self.menu_font.render("3 - Hard", True, WHITE)
+        option4 = self.menu_font.render("4 - Exit", True, WHITE)
+
         game_over_rect = game_over_text.get_rect(
-            center=(self.width // 2, self.height // 2 - 40)
+            center=(self.width // 2, 180)
         )
 
         score_rect = score_text.get_rect(
-            center=(self.width // 2, self.height // 2 + 35)
+            center=(self.width // 2, 250)
+        )
+
+        option1_rect = option1.get_rect(
+            center=(self.width // 2, 330)
+        )
+
+        option2_rect = option2.get_rect(
+            center=(self.width // 2, 375)
+        )
+
+        option3_rect = option3.get_rect(
+            center=(self.width // 2, 420)
+        )
+
+        option4_rect = option4.get_rect(
+            center=(self.width // 2, 465)
         )
 
         screen.blit(game_over_text, game_over_rect)
         screen.blit(score_text, score_rect)
+        screen.blit(option1, option1_rect)
+        screen.blit(option2, option2_rect)
+        screen.blit(option3, option3_rect)
+        screen.blit(option4, option4_rect)
