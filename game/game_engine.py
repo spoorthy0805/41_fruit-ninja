@@ -2,8 +2,6 @@ import pygame
 import random
 from .fruit import Fruit
 
-# Game Engine
-
 WHITE = (255, 255, 255)
 BOMB_BLACK = (30, 30, 30)
 FRUIT_COLORS = [(220, 60, 60), (230, 140, 40), (230, 200, 40), (90, 180, 90)]
@@ -14,9 +12,9 @@ class GameEngine:
         self.height = height
 
         self.fruits = []
-        self.trail = []  # recent mouse positions, drawn as the "blade"
+        self.trail = []
 
-        self.spawn_interval = 55  # frames between spawns
+        self.spawn_interval = 55
         self._spawn_timer = 0
         self.bomb_chance = 0.15
         self.speed_scale = 1.0
@@ -41,26 +39,52 @@ class GameEngine:
         if event.type == pygame.MOUSEMOTION:
             self._handle_motion(event.pos)
 
+    def _segment_hits_circle(self, start, end, fruit):
+        x1, y1 = start
+        x2, y2 = end
+
+        dx = x2 - x1
+        dy = y2 - y1
+
+        if dx == 0 and dy == 0:
+            return fruit.contains_point(x1, y1)
+
+        length_squared = dx * dx + dy * dy
+
+        t = ((fruit.x - x1) * dx + (fruit.y - y1) * dy) / length_squared
+        t = max(0, min(1, t))
+
+        closest_x = x1 + t * dx
+        closest_y = y1 + t * dy
+
+        distance_squared = (
+            (fruit.x - closest_x) ** 2 +
+            (fruit.y - closest_y) ** 2
+        )
+
+        return distance_squared <= fruit.radius ** 2
+
     def _handle_motion(self, pos):
-        x, y = pos
+        previous_pos = self.trail[-1] if self.trail else pos
+
         for fruit in self.fruits:
-            if not fruit.sliced and fruit.contains_point(x, y):
+            if not fruit.sliced and self._segment_hits_circle(previous_pos, pos, fruit):
                 self._slice(fruit)
 
         self.trail.append(pos)
+
         if len(self.trail) > 15:
             self.trail.pop(0)
 
     def _slice(self, fruit):
         fruit.sliced = True
+
         if fruit.kind == "bomb":
             self.game_over = True
         else:
             self.score += 1
 
     def handle_input(self):
-        # Reserved for continuously-held-key input; this game is
-        # entirely mouse-driven, so there's nothing to poll here.
         pass
 
     def update(self):
@@ -68,20 +92,26 @@ class GameEngine:
             return
 
         self._spawn_timer += 1
+
         if self._spawn_timer >= self.spawn_interval:
             self._spawn_timer = 0
             self.spawn_fruit()
 
         still_alive = []
+
         for fruit in self.fruits:
             fruit.update()
+
             if fruit.sliced:
                 continue
+
             if fruit.off_screen(self.height):
                 if fruit.kind == "fruit":
                     self.lives -= 1
                 continue
+
             still_alive.append(fruit)
+
         self.fruits = still_alive
 
         if self.lives <= 0:
@@ -90,17 +120,31 @@ class GameEngine:
     def render(self, screen):
         for fruit in self.fruits:
             color = getattr(fruit, "color", WHITE)
-            pygame.draw.circle(screen, color, (int(fruit.x), int(fruit.y)), fruit.radius)
+
+            pygame.draw.circle(
+                screen,
+                color,
+                (int(fruit.x), int(fruit.y)),
+                fruit.radius
+            )
 
         if len(self.trail) >= 2:
             pygame.draw.lines(screen, WHITE, False, self.trail, 3)
 
-        score_text = self.font.render(f"Score: {self.score}", True, WHITE)
+        score_text = self.font.render(
+            f"Score: {self.score}",
+            True,
+            WHITE
+        )
         screen.blit(score_text, (10, 10))
-        lives_text = self.font.render(f"Lives: {self.lives}", True, WHITE)
+
+        lives_text = self.font.render(
+            f"Lives: {self.lives}",
+            True,
+            WHITE
+        )
         screen.blit(lives_text, (self.width - 130, 10))
 
         if self.game_over and not getattr(self, "_game_over_logged", False):
-            # NOTE: no proper game-over screen yet - see Task 2 in the README.
             print("Game over! Final score:", self.score)
             self._game_over_logged = True
