@@ -22,6 +22,9 @@ class GameEngine:
         self.lives = 3
         self.score = 0
         self.font = pygame.font.SysFont("Arial", 28)
+        self.game_over_font = pygame.font.SysFont("Arial", 60)
+        self.final_score_font = pygame.font.SysFont("Arial", 36)
+
         self.game_over = False
 
     def spawn_fruit(self):
@@ -33,9 +36,13 @@ class GameEngine:
 
         fruit = Fruit(x, self.height + 30, vx, vy, gravity, kind=kind)
         fruit.color = BOMB_BLACK if kind == "bomb" else random.choice(FRUIT_COLORS)
+
         self.fruits.append(fruit)
 
     def handle_event(self, event):
+        if self.game_over:
+            return
+
         if event.type == pygame.MOUSEMOTION:
             self._handle_motion(event.pos)
 
@@ -128,7 +135,7 @@ class GameEngine:
                 fruit.radius
             )
 
-        if len(self.trail) >= 2:
+        if len(self.trail) >= 2 and not self.game_over:
             pygame.draw.lines(screen, WHITE, False, self.trail, 3)
 
         score_text = self.font.render(
@@ -145,6 +152,34 @@ class GameEngine:
         )
         screen.blit(lives_text, (self.width - 130, 10))
 
-        if self.game_over and not getattr(self, "_game_over_logged", False):
-            print("Game over! Final score:", self.score)
-            self._game_over_logged = True
+        if self.game_over:
+            self.render_game_over(screen)
+
+    def render_game_over(self, screen):
+        overlay = pygame.Surface((self.width, self.height))
+        overlay.set_alpha(180)
+        overlay.fill((0, 0, 0))
+        screen.blit(overlay, (0, 0))
+
+        game_over_text = self.game_over_font.render(
+            "GAME OVER",
+            True,
+            WHITE
+        )
+
+        score_text = self.final_score_font.render(
+            f"Final Score: {self.score}",
+            True,
+            WHITE
+        )
+
+        game_over_rect = game_over_text.get_rect(
+            center=(self.width // 2, self.height // 2 - 40)
+        )
+
+        score_rect = score_text.get_rect(
+            center=(self.width // 2, self.height // 2 + 35)
+        )
+
+        screen.blit(game_over_text, game_over_rect)
+        screen.blit(score_text, score_rect)
